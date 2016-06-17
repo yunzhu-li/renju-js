@@ -37,10 +37,16 @@
     // Game
     var human_player_id, ai_player_id;
 
-    // Evaluation data
-    //var eval_score_map = {1: [1, 0], 2: [3, 1], 3: [6, 2], 4: [20, 3], 5: [100, 100]}
-    var eval_score_map = {1: 1, 2: 2, 3: 6, 4: 20, 5: 100}
+    // Initializes game and render board
+    function initGame(humanPlayerID) {
+      initBoard();
+      human_player_id = humanPlayerID;
+      ai_player_id = 1 - human_player_id;
+      if (human_player_id != 0) board[7][7] = 0;
+      renderBoard();
+    }
 
+    // Allocates and initializes board data
     function initBoard() {
       var b = new Array(15);
       for (var r = 0; r < 15; r++) {
@@ -51,53 +57,42 @@
       board = b;
     }
 
+    // Resets board data
     function resetBoard() {
       for (var r = 0; r < 15; r++)
         for (var c = 0; c < 15; c++)
           board[r][c] = -1;
     }
 
-    function initGame(humanPlayerID) {
-      initBoard();
-      human_player_id = humanPlayerID;
-      ai_player_id = 1 - human_player_id;
-      if (human_player_id != 0) {
-        board[7][7] = 0;
-        renderBoard();
-      }
-    }
-
+    // Places a piece (human player)
     function placePiece(r, c) {
-      if (board[r][c] != -1) return false;
+      if (board[r][c] != -1) return -1;
       board[r][c] = human_player_id;
       renderBoard();
 
+      // human_player_id = 1 - human_player_id;
+
       var renju = isRenju();
-      if (renju != -1) {
-        alert('Player ' + renju + ' won.');
-        return true;
-      }
+      if (renju != -1) return renju;
 
       var pos = searchPos(ai_player_id);
       r = pos[0]; c = pos[1];
       board[r][c] = ai_player_id;
       renderBoard();
 
-      var renju = isRenju();
-      if (renju != -1) alert('Player ' + renju + ' won.');
-
-      return true;
+      return isRenju();
     }
 
+    // Detects if any player wins
     function isRenju() {
       for (var r = 0; r < 15; r++) {
         for (var c = 0; c < 15; c++) {
           if (board[r][c] == -1) continue;
           for (var dr = -1; dr <= 1; dr++) {
             for (var dc = -1; dc <= 1; dc++) {
-              if (dr == 0 && dc == 0) continue;
-              var result = evalDirection(r, c, dr, dc, board[r][c]);
-              if (result[1] >= 4) return result[0];
+              if (dr == 0 && dc <= 0) continue;
+              var result = contiguousCount(r, c, dr, dc, board[r][c], 0);
+              if (result[0] >= 5) return board[r][c];
             }
           }
         }
@@ -105,19 +100,32 @@
       return -1;
     }
 
+    // Searches for best position to place next piece
     function searchPos(player) {
       var max_score = -1, max_score_r, max_score_c;
+
+      // Loop through all cells
       for (var r = 0; r < 15; r++) {
         for (var c = 0; c < 15; c++) {
+          // tbl_board.rows[r].cells[c].innerHTML = '';
+
           if (board[r][c] != -1) continue;
+
+          // Place a piece
           board[r][c] = player;
+
+          // Evaluate surroundings
           var scores = evalGroup(r, c);
+
+          // Restore (remove the piece)
           board[r][c] = -1;
 
-          //console.log([r, c])
-          //console.log(scores)
+          // Calculate score for the position
+          var score = scores[player] + Math.floor(0.6 * scores[1 - player]);
 
-          var score = scores[player] + scores[1 - player];
+          // tbl_board.rows[r].cells[c].innerHTML = score;
+          // tbl_board.rows[r].cells[c].style.fontSize = '8px';
+
           if (max_score == -1 || score > max_score) {
             max_score = score;
             max_score_r = r;
@@ -128,65 +136,146 @@
       return [max_score_r, max_score_c];
     }
 
+    // Evaluates a group of pieces for a origin position
     function evalGroup(r, c) {
       var scores = [0, 0]
+      var omni_dir_count0 = [], omni_dir_count1 = [];
 
-      // Loop through each direction
-      for (var dr = -1; dr <= 1; dr++) {
+      // Loop through all directions
+      for (var dr = 0; dr <= 1; dr++) {
         for (var dc = -1; dc <= 1; dc++) {
-          if (dr == 0 && dc == 0) continue;
+          if (dr == 0 && dc <= 0) continue;
 
-          // Evaluate direction
-          var result = evalDirection(r, c, dr, dc, -1);
-          player = result[0]; num = result[1]; cut = result[2];
-
-          // No piece around
-          if (player == -1) continue;
-
-          // Calculate score
-          var s = eval_score_map[num];
-          scores[player] += s;
+          // Count contiguous pieces for each direction of each player
+          var r0 = contiguousCount(r, c, dr, dc, 0, 1);
+          var r1 = contiguousCount(r, c, dr, dc, 1, 1);
+          omni_dir_count0.push(r0);
+          omni_dir_count1.push(r1);
         }
       }
+
+      // Calculate score
+      scores[0] = scoreOmniDirCnt(omni_dir_count0);
+      scores[1] = scoreOmniDirCnt(omni_dir_count1);
+
       return scores;
     }
 
-    // Evaluates row on given direction
-    // Returns [player, num, cut]
-    //         player - player first seen on the direction
-    //         num - maximum number of pieces in a row
+    // Calculates score for an omni-directional contiguous count
+    function scoreOmniDirCnt(omni_dir_eval) {
+      var score = 0;
+      score += matchPattern(omni_dir_eval, [1, 5, 0], []) * 10000;
+      score += matchPattern(omni_dir_eval, [2, 4, 1], []) * 700;
+      score += matchPattern(omni_dir_eval, [1, 4, 0], []) * 500;
+      score += matchPattern(omni_dir_eval, [1, 4, 1], [1, 3, 0]) * 300;
+      score += matchPattern(omni_dir_eval, [2, 3, 0], []) * 200;
+      score += matchPattern(omni_dir_eval, [1, 3, 0], []) * 100;
+      score += matchPattern(omni_dir_eval, [1, 4, 1], []) * 30;
+      score += matchPattern(omni_dir_eval, [2, 2, 0], []) * 8;
+      score += matchPattern(omni_dir_eval, [1, 3, 1], []) * 4;
+      score += matchPattern(omni_dir_eval, [1, 2, 0], []) * 3;
+      score += matchPattern(omni_dir_eval, [1, 2, 1], []) * 2;
+      score += matchPattern(omni_dir_eval, [1, 1, 0], []) * 1;
+      score += matchPattern(omni_dir_eval, [1, 1, 1], []) * 1;
+      return score;
+    }
+
+    // Matches a pattern to an omni-directional contiguous count
+    function matchPattern(omni_dir_eval, pattern0, pattern1) {
+      var cnt0 = pattern0[0], len0 = pattern0[1], cut0 = pattern0[2];
+      var cnt1 = -1, len1 = -1, cut1 = -1;
+      var p0_match_cnt = 0, p1_match_cnt = 0;
+      if (pattern1.length > 0) { cnt1 = pattern1[0]; len1 = pattern1[1]; cut1 = pattern1[2]; }
+
+      var arr_len = omni_dir_eval.length
+      for (var i = 0; i < arr_len; i++) {
+        dir_eval = omni_dir_eval[i];
+        if (dir_eval[0] == len0 && dir_eval[1] == cut0) p0_match_cnt++;
+        if (dir_eval[0] == len1 && dir_eval[1] == cut1) p1_match_cnt++;
+      }
+
+      if (cnt1 == -1) {
+        return Math.floor(p0_match_cnt / cnt0);
+      } else {
+        return Math.min(Math.floor(p0_match_cnt / cnt0), Math.floor(p1_match_cnt / cnt1));
+      }
+    }
+
+    // Counts the number of contiguous pieces by given position and direction
+    // Returns [len, cut]
+    //         len - number of pieces in a row
     //         cut - is the row cut by another player or reaches edge
-    function evalDirection(r, c, dr, dc, origin_player) {
-      var num = 0, cut = 1, player = origin_player;
+    function contiguousCount(r, c, dr, dc, player, space_allowance) {
+      var rl = r, rr = r, cl = c, cr = c;
+      var len = 1, cutl = 1, cutr = 1;
+
       while (true) {
         // Move
-        r += dr;
-        c += dc;
+        rl -= dr; cl -= dc;
 
         // Stop conditions
-        if (r < 0 || r >= 15) break;
-        if (c < 0 || c >= 15) break;
-        if (board[r][c] == -1) { cut = 0; break; }
-
-        if (player == -1 || board[r][c] == player) {
-          player = board[r][c];
-          num++;
-        } else {
-          break;
+        if (rl < 0 || rl >= 15 || cl < 0 || cl >= 15) break;
+        if (board[rl][cl] == -1) {
+          // Handle 1001 -> 1101 cases
+          if (space_allowance == 1 &&
+              getCell(r + dr, c + dc) == player &&
+              getCell(rl - dr, cl - dc) == player) {
+            space_allowance = 0;
+            continue;
+          } else {
+            cutl = 0;
+            break;
+          }
         }
+        if (board[rl][cl] != player) break;
+        len++;
       }
-      return [player, num, cut];
+
+      while (true) {
+        // Move
+        rr += dr; cr += dc;
+
+        // Stop conditions
+        if (rr < 0 || rr >= 15 || cr < 0 || cr >= 15) break;
+        if (board[rr][cr] == -1) {
+          // Handle 1001 -> 1101 cases
+          if (space_allowance == 1 &&
+              getCell(r - dr, c - dc) == player &&
+              getCell(rr + dr, cr + dc) == player) {
+            space_allowance = 0;
+            continue;
+          } else {
+            cutr = 0;
+            break;
+          }
+        }
+        if (board[rr][cr] != player) break;
+        len++;
+      }
+
+      if (len >= 5) return [5, 0];
+      if (cutl == 1 && cutr == 1) return [0, 1];
+      return [len, cutl + cutr];
+    }
+
+    // Gets cell value
+    function getCell(r, c) {
+      if (r < 0 || r >= 15 || c < 0 || c >= 15) return -1;
+      return board[r][c];
     }
 
   </script>
   <script>
 
-    initGame(0);
-    initTblBoard();
-    renderBoard();
-
+    // Randomly select first player
     var human_player = 0;
+    if (Math.random() > 0.5) human_player = 1;
 
+    // Initialization
+    initTblBoard();
+    initGame(human_player);
+
+    // Initializes tbl_board
     function initTblBoard() {
       for (var r = 0; r < 15; r++) {
         var row = tbl_board.insertRow();
@@ -199,6 +288,7 @@
       }
     }
 
+    // Renders tbl_board with game data
     function renderBoard() {
       for (var r = 0; r < 15; r++) {
         for (var c = 0; c < 15; c++) {
@@ -213,9 +303,14 @@
       }
     }
 
+    // Handles tbl_board cells click events
     function tblBoardOnClick(e) {
       var r = e.target.r, c = e.target.c;
-      placePiece(r, c);
+      var renju = placePiece(r, c);
+      var player_name = 'black';
+      if (renju == -1) return;
+      if (renju == 1) player_name = 'white';
+      alert("Player " + player_name + ' won');
     }
   </script>
 </html>
