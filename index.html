@@ -1,0 +1,221 @@
+
+<!doctype html>
+<!--
+    Renju
+    Copyright (C) 2016 Yunzhu Li
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-->
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="author" content="Yunzhu Li">
+    <title>Renju</title>
+  </head>
+
+  <body style="font-family: Consolas, monospace; font-size: 14px; background-color: #fff; ">
+    <table id="tbl_board"></table>
+  </body>
+
+  <script>
+    // Board
+    var board;
+    var tbl_board = document.getElementById('tbl_board');
+
+    // Game
+    var human_player_id, ai_player_id;
+
+    // Evaluation data
+    //var eval_score_map = {1: [1, 0], 2: [3, 1], 3: [6, 2], 4: [20, 3], 5: [100, 100]}
+    var eval_score_map = {1: 1, 2: 2, 3: 6, 4: 20, 5: 100}
+
+    function initBoard() {
+      var b = new Array(15);
+      for (var r = 0; r < 15; r++) {
+        b[r] = new Array(15);
+        for (var c = 0; c < 15; c++)
+          b[r][c] = -1;
+      }
+      board = b;
+    }
+
+    function resetBoard() {
+      for (var r = 0; r < 15; r++)
+        for (var c = 0; c < 15; c++)
+          board[r][c] = -1;
+    }
+
+    function initGame(humanPlayerID) {
+      initBoard();
+      human_player_id = humanPlayerID;
+      ai_player_id = 1 - human_player_id;
+      if (human_player_id != 0) {
+        board[7][7] = 0;
+        renderBoard();
+      }
+    }
+
+    function placePiece(r, c) {
+      if (board[r][c] != -1) return false;
+      board[r][c] = human_player_id;
+      renderBoard();
+
+      var renju = isRenju();
+      if (renju != -1) {
+        alert('Player ' + renju + ' won.');
+        return true;
+      }
+
+      var pos = searchPos(ai_player_id);
+      r = pos[0]; c = pos[1];
+      board[r][c] = ai_player_id;
+      renderBoard();
+
+      var renju = isRenju();
+      if (renju != -1) alert('Player ' + renju + ' won.');
+
+      return true;
+    }
+
+    function isRenju() {
+      for (var r = 0; r < 15; r++) {
+        for (var c = 0; c < 15; c++) {
+          if (board[r][c] == -1) continue;
+          for (var dr = -1; dr <= 1; dr++) {
+            for (var dc = -1; dc <= 1; dc++) {
+              if (dr == 0 && dc == 0) continue;
+              var result = evalDirection(r, c, dr, dc, board[r][c]);
+              if (result[1] >= 4) return result[0];
+            }
+          }
+        }
+      }
+      return -1;
+    }
+
+    function searchPos(player) {
+      var max_score = -1, max_score_r, max_score_c;
+      for (var r = 0; r < 15; r++) {
+        for (var c = 0; c < 15; c++) {
+          if (board[r][c] != -1) continue;
+          board[r][c] = player;
+          var scores = evalGroup(r, c);
+          board[r][c] = -1;
+
+          //console.log([r, c])
+          //console.log(scores)
+
+          var score = scores[player] + scores[1 - player];
+          if (max_score == -1 || score > max_score) {
+            max_score = score;
+            max_score_r = r;
+            max_score_c = c;
+          }
+        }
+      }
+      return [max_score_r, max_score_c];
+    }
+
+    function evalGroup(r, c) {
+      var scores = [0, 0]
+
+      // Loop through each direction
+      for (var dr = -1; dr <= 1; dr++) {
+        for (var dc = -1; dc <= 1; dc++) {
+          if (dr == 0 && dc == 0) continue;
+
+          // Evaluate direction
+          var result = evalDirection(r, c, dr, dc, -1);
+          player = result[0]; num = result[1]; cut = result[2];
+
+          // No piece around
+          if (player == -1) continue;
+
+          // Calculate score
+          var s = eval_score_map[num];
+          scores[player] += s;
+        }
+      }
+      return scores;
+    }
+
+    // Evaluates row on given direction
+    // Returns [player, num, cut]
+    //         player - player first seen on the direction
+    //         num - maximum number of pieces in a row
+    //         cut - is the row cut by another player or reaches edge
+    function evalDirection(r, c, dr, dc, origin_player) {
+      var num = 0, cut = 1, player = origin_player;
+      while (true) {
+        // Move
+        r += dr;
+        c += dc;
+
+        // Stop conditions
+        if (r < 0 || r >= 15) break;
+        if (c < 0 || c >= 15) break;
+        if (board[r][c] == -1) { cut = 0; break; }
+
+        if (player == -1 || board[r][c] == player) {
+          player = board[r][c];
+          num++;
+        } else {
+          break;
+        }
+      }
+      return [player, num, cut];
+    }
+
+  </script>
+  <script>
+
+    initGame(0);
+    initTblBoard();
+    renderBoard();
+
+    var human_player = 0;
+
+    function initTblBoard() {
+      for (var r = 0; r < 15; r++) {
+        var row = tbl_board.insertRow();
+        for (var c = 0; c < 15; c++) {
+          cell = row.insertCell();
+          cell.width = '20px'; cell.height = '20px';
+          cell.r = r; cell.c = c;
+          cell.addEventListener("click", tblBoardOnClick);
+        }
+      }
+    }
+
+    function renderBoard() {
+      for (var r = 0; r < 15; r++) {
+        for (var c = 0; c < 15; c++) {
+          var color = '#ccc';
+          if (board[r][c] == 0) {
+            color = '#666';
+          } else if (board[r][c] == 1) {
+            color = '#eee';
+          }
+          tbl_board.rows[r].cells[c].style.backgroundColor = color;
+        }
+      }
+    }
+
+    function tblBoardOnClick(e) {
+      var r = e.target.r, c = e.target.c;
+      placePiece(r, c);
+    }
+  </script>
+</html>
