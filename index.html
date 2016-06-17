@@ -1,4 +1,3 @@
-
 <!doctype html>
 <!--
     Renju
@@ -17,7 +16,6 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 -->
-
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -27,6 +25,8 @@
 
   <body style="font-family: Consolas, monospace; font-size: 14px; background-color: #fff; ">
     <table id="tbl_board"></table>
+    <br>
+    <span id="txt_msg"></span>
   </body>
 
   <script>
@@ -40,9 +40,12 @@
     // Initializes game and render board
     function initGame(humanPlayerID) {
       initBoard();
+
+      // Place a piece at center if AI goes first
       human_player_id = humanPlayerID;
       ai_player_id = 1 - human_player_id;
       if (human_player_id != 0) board[7][7] = 0;
+
       renderBoard();
     }
 
@@ -121,7 +124,7 @@
           board[r][c] = -1;
 
           // Calculate score for the position
-          var score = scores[player] + Math.floor(0.6 * scores[1 - player]);
+          var score = scores[player] + Math.floor(0.5 * scores[1 - player]);
 
           // tbl_board.rows[r].cells[c].innerHTML = score;
           // tbl_board.rows[r].cells[c].style.fontSize = '8px';
@@ -162,34 +165,34 @@
     }
 
     // Calculates score for an omni-directional contiguous count
-    function scoreOmniDirCnt(omni_dir_eval) {
+    function scoreOmniDirCnt(omni_dir_count) {
       var score = 0;
-      score += matchPattern(omni_dir_eval, [1, 5, 0], []) * 10000;
-      score += matchPattern(omni_dir_eval, [2, 4, 1], []) * 700;
-      score += matchPattern(omni_dir_eval, [1, 4, 0], []) * 500;
-      score += matchPattern(omni_dir_eval, [1, 4, 1], [1, 3, 0]) * 300;
-      score += matchPattern(omni_dir_eval, [2, 3, 0], []) * 200;
-      score += matchPattern(omni_dir_eval, [1, 3, 0], []) * 100;
-      score += matchPattern(omni_dir_eval, [1, 4, 1], []) * 30;
-      score += matchPattern(omni_dir_eval, [2, 2, 0], []) * 8;
-      score += matchPattern(omni_dir_eval, [1, 3, 1], []) * 4;
-      score += matchPattern(omni_dir_eval, [1, 2, 0], []) * 3;
-      score += matchPattern(omni_dir_eval, [1, 2, 1], []) * 2;
-      score += matchPattern(omni_dir_eval, [1, 1, 0], []) * 1;
-      score += matchPattern(omni_dir_eval, [1, 1, 1], []) * 1;
+      score += matchPattern(omni_dir_count, [1, 5, 0], []) * 10000;
+      score += matchPattern(omni_dir_count, [2, 4, 1], []) * 700;
+      score += matchPattern(omni_dir_count, [1, 4, 0], []) * 500;
+      score += matchPattern(omni_dir_count, [1, 4, 1], [1, 3, 0]) * 300;
+      score += matchPattern(omni_dir_count, [2, 3, 0], []) * 200;
+      score += matchPattern(omni_dir_count, [1, 3, 0], []) * 100;
+      score += matchPattern(omni_dir_count, [1, 4, 1], []) * 30;
+      score += matchPattern(omni_dir_count, [2, 2, 0], []) * 8;
+      score += matchPattern(omni_dir_count, [1, 3, 1], []) * 4;
+      score += matchPattern(omni_dir_count, [1, 2, 0], []) * 3;
+      score += matchPattern(omni_dir_count, [1, 2, 1], []) * 2;
+      score += matchPattern(omni_dir_count, [1, 1, 0], []) * 1;
+      score += matchPattern(omni_dir_count, [1, 1, 1], []) * 1;
       return score;
     }
 
     // Matches a pattern to an omni-directional contiguous count
-    function matchPattern(omni_dir_eval, pattern0, pattern1) {
+    function matchPattern(omni_dir_count, pattern0, pattern1) {
       var cnt0 = pattern0[0], len0 = pattern0[1], cut0 = pattern0[2];
       var cnt1 = -1, len1 = -1, cut1 = -1;
       var p0_match_cnt = 0, p1_match_cnt = 0;
       if (pattern1.length > 0) { cnt1 = pattern1[0]; len1 = pattern1[1]; cut1 = pattern1[2]; }
 
-      var arr_len = omni_dir_eval.length
+      var arr_len = omni_dir_count.length
       for (var i = 0; i < arr_len; i++) {
-        dir_eval = omni_dir_eval[i];
+        dir_eval = omni_dir_count[i];
         if (dir_eval[0] == len0 && dir_eval[1] == cut0) p0_match_cnt++;
         if (dir_eval[0] == len1 && dir_eval[1] == cut1) p1_match_cnt++;
       }
@@ -271,6 +274,8 @@
     var human_player = 0;
     if (Math.random() > 0.5) human_player = 1;
 
+    var game_active = true;
+
     // Initialization
     initTblBoard();
     initGame(human_player);
@@ -305,12 +310,20 @@
 
     // Handles tbl_board cells click events
     function tblBoardOnClick(e) {
+      if (!game_active) return;
+
+      // Place piece
       var r = e.target.r, c = e.target.c;
       var renju = placePiece(r, c);
-      var player_name = 'black';
-      if (renju == -1) return;
-      if (renju == 1) player_name = 'white';
-      alert("Player " + player_name + ' won');
+
+      // Check if any player wins
+      if (renju != -1) {
+        game_active = false;
+
+        var player_name = 'Black';
+        if (renju == 1) player_name = 'White';
+        document.getElementById('txt_msg').innerHTML = player_name + ' wins!';
+      }
     }
   </script>
 </html>
