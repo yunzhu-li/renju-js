@@ -2,7 +2,7 @@
 
 A simple Renju game written in JavaScript.
 
-The current default search depth is `4`. But I can rarely beat it even it is set to `1`.
+The current default search depth is `2`. But I can rarely beat it even it is set to `1`.
 
 I'm still improving the algorithm, including pattern analysis and increasing depth.
 

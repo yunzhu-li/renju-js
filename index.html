@@ -35,8 +35,12 @@
 
   <script>
     // Script: Game logic
+
+    // Configurations
     var mode_debug = false;
-    var search_depth = 4, search_width = 10;
+    var search_depth = 2, search_width = -1;
+
+    // Game data
     var board;
     var human_player_id, ai_player_id;
 
@@ -77,15 +81,15 @@
         return;
       }
 
+      // Place piece
       board[r][c] = human_player_id;
       renderBoard();
 
-      // human_player_id = 1 - human_player_id;
-      if (mode_debug) return;
-
+      // Check if player wins
       var renju = isRenju();
       if (renju != -1) { callback(renju); return; }
 
+      // Search for move asynchronously
       setTimeout(function() {
         var move = searchMoveDeep(ai_player_id, search_depth);
         r = move[1][0]; c = move[1][1];
@@ -93,6 +97,7 @@
         board[r][c] = ai_player_id;
         renderBoard();
 
+        // Send feedback
         callback(isRenju());
       }, 10);
     }
@@ -116,28 +121,40 @@
 
     // Search in depth
     function searchMoveDeep(player, depth) {
-      if (depth <= 0) return [0, [0, 0]];
+      if (depth < 0) return [0, [0, 0]];
       var max_score = 0 - Number.MAX_VALUE, max_score_r, max_score_c;
 
-      moves = searchMove(player, search_width);
+      // Search moves for current player
+      var moves = searchMoves(player, search_width);
+
+      // Consider each move
       for (var i = 0; i < moves.length; i++) {
         var move = moves[i];
 
+        // No need to explore further if it wins the game
+        if (move[0] >= 100000) return move;
+
+        // Execute move and find next move as another player
         board[move[1][0]][move[1][1]] = player;
         var r = searchMoveDeep(1 - player, depth - 1);
         board[move[1][0]][move[1][1]] = -1;
 
+        // A little bit more aggressive
+        r[0] *= 0.9;
+
+        // Find the move with maximum score
         if (move[0] - r[0] > max_score) {
           max_score = move[0] - r[0];
           max_score_r = move[1][0];
           max_score_c = move[1][1];
         }
       }
+
       return [max_score, [max_score_r, max_score_c]];
     }
 
     // Searches for the next moves with best group evaluations
-    function searchMove(player, num_pos) {
+    function searchMoves(player, num_moves) {
       var max_score = -1, max_score_r, max_score_c;
       var positions = [];
 
@@ -154,15 +171,12 @@
           board[r][c] = player;
 
           // Evaluate surroundings
-          var scores = evalGroup(r, c);
+          var score = evalGroup(r, c, player);
 
           // Restore (remove the piece)
           board[r][c] = -1;
 
-          // Calculate score for the position
-          var score = scores[player] + Math.floor(0.5 * scores[1 - player]);
-
-          if (num_pos == 1) {
+          if (num_moves == 1) {
             // Only 1 position, O(1) space
             if (max_score == -1 || score > max_score) {
               max_score = score;
@@ -175,21 +189,22 @@
         }
       }
 
-      if (num_pos == 1) {
+      if (num_moves == 1) {
         return [[max_score, [max_score_r, max_score_c]]];
       } else {
         // Sort
         positions.sort(function(a, b) { return b[0] - a[0]});
 
         // Subarray
-        return positions.slice(0, num_pos);
+        if (num_moves != -1) return positions.slice(0, num_moves);
+        return positions;
       }
     }
 
     // Checks if no pieces there within 2 steps from the origin
     function emptyGroup(r, c) {
-      for (i = r - 2; i <= r + 2; i++) {
-        for (j = c - 2; j <= c + 2; j++) {
+      for (var i = r - 2; i <= r + 2; i++) {
+        for (var j = c - 2; j <= c + 2; j++) {
           if (getCell(i, j) != -1) return false;
         }
       }
@@ -197,44 +212,40 @@
     }
 
     // Evaluates a group of pieces from a given position
-    function evalGroup(r, c) {
-      var scores = [0, 0]
+    function evalGroup(r, c, player) {
+      var score = 0;
 
       // Consider both contiguous and non-contiguous possibilities
       for (var contiguous = 0; contiguous <= 1; contiguous++) {
         // Record row analysis of all directions
-        var omni_dir_eval0 = [], omni_dir_eval1 = [];
+        var omni_dir_eval = [];
 
-        // Loop through all directions
+        // Evaluate all directions
         for (var dr = 0; dr <= 1; dr++) {
           for (var dc = -1; dc <= 1; dc++) {
             if (dr == 0 && dc <= 0) continue;
-
-            // Count contiguous pieces for each direction of each player
-            var r0 = evalDirection(r, c, dr, dc, 0, contiguous);
-            var r1 = evalDirection(r, c, dr, dc, 1, contiguous);
-            omni_dir_eval0.push(r0);
-            omni_dir_eval1.push(r1);
+            var eval = evalDirection(r, c, dr, dc, player, contiguous);
+            omni_dir_eval.push(eval);
           }
         }
 
         // Calculate score
-        scores[0] = Math.max(scores[0], scoreOmniDirEval(omni_dir_eval0));
-        scores[1] = Math.max(scores[1], scoreOmniDirEval(omni_dir_eval1));
+        score = Math.max(score, scoreOmniDirEval(omni_dir_eval));
       }
-      return scores;
+      return score;
     }
 
     // Counts the number of contiguous / non-contiguous pieces by given position and direction
     // Returns [len, cut]
-    //         len - number of pieces in a row
-    //         cut - is the row cut by another player or reaches edge
+    //         len   - number of pieces in the row
+    //         cut   - is the row cut by another player or reaches edge
+    //         space - number of spaces in the row
     function evalDirection(r, c, dr, dc, player, contiguous) {
       var rl = r, rr = r, cl = c, cr = c;
       var len = 1, cutl = 1, cutr = 1;
 
       // Allow an additional empty space if contiguousness is not required
-      var space_allowance = 0;
+      var space_allowance = 0, space_cnt = 0;
       if (contiguous == 0) space_allowance = 1;
 
       // Move to the reverse direction
@@ -248,7 +259,7 @@
         // Empty cells
         if (board[rl][cl] == -1) {
           if (space_allowance == 1 && getCell(rl - dr, cl - dc) == player) {
-            space_allowance--;
+            space_allowance--; space_cnt++;
             continue;
           } else {
             cutl = 0;
@@ -271,7 +282,7 @@
         // Empty cells
         if (board[rr][cr] == -1) {
           if (space_allowance == 1 && getCell(rr + dr, cr + dc) == player) {
-            space_allowance--;
+            space_allowance--; space_cnt++;
             continue;
           } else {
             cutr = 0;
@@ -284,54 +295,59 @@
         len++;
       }
 
-      // Handle conditions
-      if (len >= 5) {
-        if (contiguous > 0 || space_allowance > 0) return [5, 0];
-        else return[4, 1];
-      }
-      if (len == 4 && space_allowance == 0) return [4, 1];
-      if (cutl == 1 && cutr == 1) return [0, 1];
-      return [len, cutl + cutr];
+      if (len >= 5 && space_cnt == 0) return [5, 0, 0];
+      return [len, cutl + cutr, space_cnt];
     }
 
     // Calculates score for an omni-directional evaluation
     function scoreOmniDirEval(omni_dir_eval) {
       var score = 0;
-      score += matchPattern(omni_dir_eval, [1, 5, 0], []) * 100000;
-      score += matchPattern(omni_dir_eval, [2, 4, 1], []) * 3000;
-      score += matchPattern(omni_dir_eval, [1, 4, 0], []) * 2500;
-      score += matchPattern(omni_dir_eval, [1, 4, 1], [1, 3, 0]) * 1000;
-      score += matchPattern(omni_dir_eval, [2, 3, 0], []) * 200;
-      score += matchPattern(omni_dir_eval, [1, 3, 0], []) * 60;
-      score += matchPattern(omni_dir_eval, [1, 4, 1], []) * 30;
-      score += matchPattern(omni_dir_eval, [2, 2, 0], []) * 8;
-      score += matchPattern(omni_dir_eval, [1, 3, 1], []) * 5;
-      score += matchPattern(omni_dir_eval, [1, 2, 0], []) * 4;
-      score += matchPattern(omni_dir_eval, [1, 2, 1], []) * 3;
-      score += matchPattern(omni_dir_eval, [1, 1, 0], []) * 2;
-      score += matchPattern(omni_dir_eval, [1, 1, 1], []) * 1;
+      score += matchPattern(omni_dir_eval, [1, 5, 0,  0], []) * 100000;
+      score += matchPattern(omni_dir_eval, [2, 4, 0, -1], []) * 1000;
+      score += matchPattern(omni_dir_eval, [2, 4, 1, -1], []) * 1000;
+      score += matchPattern(omni_dir_eval, [1, 4, 1, -1], [1, 3, 0, -1]) * 1000;
+      score += matchPattern(omni_dir_eval, [1, 4, 0,  0], []) * 1000;
+      score += matchPattern(omni_dir_eval, [1, 4, 0,  1], []) * 60;
+      score += matchPattern(omni_dir_eval, [1, 4, 1, -1], []) * 30;
+      score += matchPattern(omni_dir_eval, [2, 3, 0, -1], []) * 500;
+      score += matchPattern(omni_dir_eval, [1, 3, 0, -1], []) * 60;
+      score += matchPattern(omni_dir_eval, [2, 2, 0, -1], []) * 8;
+      score += matchPattern(omni_dir_eval, [1, 3, 1, -1], []) * 5;
+      score += matchPattern(omni_dir_eval, [1, 2, 0, -1], []) * 4;
+      score += matchPattern(omni_dir_eval, [1, 2, 1, -1], []) * 3;
+      score += matchPattern(omni_dir_eval, [1, 1, 0, -1], []) * 1;
+      score += matchPattern(omni_dir_eval, [1, 1, 1, -1], []) * 1;
       return score;
     }
 
     // Matches a pattern to an omni-directional evaluation
     function matchPattern(omni_dir_eval, pattern0, pattern1) {
-      var cnt0 = pattern0[0], len0 = pattern0[1], cut0 = pattern0[2];
-      var cnt1 = -1, len1 = -1, cut1 = -1;
+
+      var cnt0 = pattern0[0], len0 = pattern0[1], cut0 = pattern0[2], space_cnt0 = pattern0[3];
+      var cnt1 = -1, len1 = -1, cut1 = -1, space_cnt1 = -1;
       var p0_match_cnt = 0, p1_match_cnt = 0;
-      if (pattern1.length > 0) { cnt1 = pattern1[0]; len1 = pattern1[1]; cut1 = pattern1[2]; }
+      var match_space_cnt = 0;
+
+      // Pattern1 is optional
+      if (pattern1.length > 0) { cnt1 = pattern1[0]; len1 = pattern1[1]; cut1 = pattern1[2]; space_cnt1 = pattern1[3]; }
 
       var arr_len = omni_dir_eval.length
       for (var i = 0; i < arr_len; i++) {
-        dir_eval = omni_dir_eval[i];
-        if (dir_eval[0] == len0 && dir_eval[1] == cut0) p0_match_cnt++;
-        if (dir_eval[0] == len1 && dir_eval[1] == cut1) p1_match_cnt++;
+        var dir_eval = omni_dir_eval[i];
+        if (dir_eval[0] == len0 && dir_eval[1] == cut0 && (space_cnt0 == -1 || dir_eval[2] == space_cnt0)) {
+          p0_match_cnt++; match_space_cnt += dir_eval[2];
+        }
+
+        if (dir_eval[0] == len1 && dir_eval[1] == cut1 && (space_cnt1 == -1 || dir_eval[2] == space_cnt1)) {
+          p1_match_cnt++; match_space_cnt += dir_eval[2];
+        }
       }
 
-      if (cnt1 == -1) {
-        return Math.floor(p0_match_cnt / cnt0);
-      } else {
-        return Math.min(Math.floor(p0_match_cnt / cnt0), Math.floor(p1_match_cnt / cnt1));
-      }
+      var matching_degree = Math.floor(p0_match_cnt / cnt0);
+      if (cnt1 != -1) matching_degree = Math.min(Math.floor(p0_match_cnt / cnt0), Math.floor(p1_match_cnt / cnt1));
+
+      if (match_space_cnt > 0) matching_degree *= 0.9;
+      return matching_degree;
     }
 
     // Gets cell value
@@ -402,7 +418,7 @@
         var row = tbl_board.insertRow();
         for (var c = 0; c < 15; c++) {
           // New cell and data
-          cell = row.insertCell();
+          var cell = row.insertCell();
           cell.r = r; cell.c = c;
           cell.board_data = -2;
 
