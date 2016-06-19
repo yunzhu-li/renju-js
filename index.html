@@ -36,6 +36,7 @@
   <script>
     // Script: Game logic
     var mode_debug = false;
+    var search_depth = 4, search_width = 10;
     var board;
     var human_player_id, ai_player_id;
 
@@ -70,23 +71,30 @@
     }
 
     // Places a piece (human player)
-    function placePiece(r, c) {
-      if (board[r][c] != -1) return -1;
+    function placePiece(r, c, callback) {
+      if (board[r][c] != -1) {
+        callback(-1);
+        return;
+      }
+
       board[r][c] = human_player_id;
       renderBoard();
 
       // human_player_id = 1 - human_player_id;
-      if (mode_debug) return -1;
+      if (mode_debug) return;
 
       var renju = isRenju();
-      if (renju != -1) return renju;
+      if (renju != -1) callback(renju);
 
-      var pos = searchPos(ai_player_id);
-      r = pos[0]; c = pos[1];
-      board[r][c] = ai_player_id;
-      renderBoard();
+      setTimeout(function() {
+        var move = searchMoveDeep(ai_player_id, search_depth);
+        r = move[1][0]; c = move[1][1];
 
-      return isRenju();
+        board[r][c] = ai_player_id;
+        renderBoard();
+
+        callback(isRenju());
+      }, 10);
     }
 
     // Detects if any player wins
@@ -106,15 +114,41 @@
       return -1;
     }
 
-    // Searches for best position to place next piece
-    function searchPos(player) {
+    // Search in depth
+    function searchMoveDeep(player, depth) {
+      if (depth <= 0) return [0, [0, 0]];
+      var max_score = -Number.MAX_VALUE, max_score_r, max_score_c;
+
+      moves = searchMove(player, search_width);
+      for (var i = 0; i < moves.length; i++) {
+        var move = moves[i];
+
+        board[move[1][0]][move[1][1]] = player;
+        var r = searchMoveDeep(1 - player, depth - 1);
+        board[move[1][0]][move[1][1]] = -1;
+
+        if (move[0] - r[0] > max_score) {
+          max_score = move[0] + r[0];
+          max_score_r = move[1][0];
+          max_score_c = move[1][1];
+        }
+      }
+      return [max_score, [max_score_r, max_score_c]];
+    }
+
+    // Searches for the next moves with best group evaluations
+    function searchMove(player, num_pos) {
       var max_score = -1, max_score_r, max_score_c;
+      var positions = [];
 
       // Loop through all cells
       for (var r = 0; r < 15; r++) {
         for (var c = 0; c < 15; c++) {
           // Consider only empty cells
           if (board[r][c] != -1) continue;
+
+          // Skip far positions
+          if (emptyGroup(r, c)) continue;
 
           // Place a piece
           board[r][c] = player;
@@ -128,14 +162,38 @@
           // Calculate score for the position
           var score = scores[player] + Math.floor(0.5 * scores[1 - player]);
 
-          if (max_score == -1 || score > max_score) {
-            max_score = score;
-            max_score_r = r;
-            max_score_c = c;
+          if (num_pos == 1) {
+            // Only 1 position, O(1) space
+            if (max_score == -1 || score > max_score) {
+              max_score = score;
+              max_score_r = r;
+              max_score_c = c;
+            }
+          } else {
+            positions.push([score, [r, c]]);
           }
         }
       }
-      return [max_score_r, max_score_c];
+
+      if (num_pos == 1) {
+        return [[max_score, [max_score_r, max_score_c]]];
+      } else {
+        // Sort
+        positions.sort(function(a, b) { return b[0] - a[0]});
+
+        // Subarray
+        return positions.slice(0, num_pos);
+      }
+    }
+
+    // Checks if no pieces there within 2 steps from the origin
+    function emptyGroup(r, c) {
+      for (i = r - 2; i <= r + 2; i++) {
+        for (j = c - 2; j <= c + 2; j++) {
+          if (getCell(i, j) != -1) return false;
+        }
+      }
+      return true;
     }
 
     // Evaluates a group of pieces from a given position
@@ -179,12 +237,15 @@
       var space_allowance = 0;
       if (contiguous == 0) space_allowance = 1;
 
+      // Move to the reverse direction
       while (true) {
         // Move
         rl -= dr; cl -= dc;
 
-        // Stop conditions
+        // Edge
         if (rl < 0 || rl >= 15 || cl < 0 || cl >= 15) break;
+
+        // Empty cells
         if (board[rl][cl] == -1) {
           if (space_allowance == 1 && getCell(rl - dr, cl - dc) == player) {
             space_allowance--;
@@ -194,6 +255,8 @@
             break;
           }
         }
+
+        // Piece of the other player
         if (board[rl][cl] != player) break;
         len++;
       }
@@ -202,8 +265,10 @@
         // Move
         rr += dr; cr += dc;
 
-        // Stop conditions
+        // Edge
         if (rr < 0 || rr >= 15 || cr < 0 || cr >= 15) break;
+
+        // Empty cells
         if (board[rr][cr] == -1) {
           if (space_allowance == 1 && getCell(rr + dr, cr + dc) == player) {
             space_allowance--;
@@ -213,10 +278,13 @@
             break;
           }
         }
+
+        // Piece of the other player
         if (board[rr][cr] != player) break;
         len++;
       }
 
+      // Handle conditions
       if (len >= 5) {
         if (contiguous > 0 || space_allowance > 0) return [5, 0];
         else return[4, 1];
@@ -383,17 +451,23 @@
     // Handles tbl_board cells click events
     function tblBoardOnClick(e) {
       if (!game_active) return;
+      game_active = false;
 
       // Place piece
       var r = e.currentTarget.r, c = e.currentTarget.c;
-      var renju = placePiece(r, c);
+      placePiece(r, c, gameStatusUpdate);
+    }
 
+    // Update status (callback)
+    function gameStatusUpdate(renju) {
       // Check if any player wins
       if (renju != -1) {
         game_active = false;
         var player_color = 'Black';
         if (renju == 1) player_color = 'White';
         showMessage(player_color + ' wins! <a href=".">Restart</a>');
+      } else {
+        game_active = true;
       }
     }
 
