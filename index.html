@@ -138,7 +138,7 @@
       return [max_score_r, max_score_c];
     }
 
-    // Evaluates a group of pieces for a origin position
+    // Evaluates a group of pieces from a given position
     function evalGroup(r, c) {
       var scores = [0, 0]
 
@@ -276,7 +276,7 @@
 
   <script>
     // Script: Game display control, input and message
-    // Graphics
+    // Preset graphics
     var svg_lines = [
       '<line x1="50%" y1="0" x2="50%" y2="50%" style="stroke:rgb(110,110,110); stroke-width:2px;" />',
       '<line x1="0" y1="50%" x2="50%" y2="50%" style="stroke:rgb(110,110,110); stroke-width:2px;" />',
@@ -299,6 +299,9 @@
 
     if (human_player == 0) showMessage('Player: black');
     else showMessage('Player: white');
+
+    // Cache last board status
+    var board_cache;
 
     initGameDisplay();
     initGame(human_player);
@@ -330,11 +333,17 @@
       for (var r = 0; r < 15; r++) {
         var row = tbl_board.insertRow();
         for (var c = 0; c < 15; c++) {
+          // New cell and data
           cell = row.insertCell();
           cell.r = r; cell.c = c;
+          cell.board_data = -2;
+
+          // Style
           cell.width = cell_width; cell.height = cell_height;
           cell.style.padding = '0';
           cell.style.verticalAlign = 'bottom';
+
+          // Handle click event
           cell.addEventListener("click", tblBoardOnClick);
         }
       }
@@ -345,21 +354,23 @@
       for (var r = 0; r < 15; r++) {
         for (var c = 0; c < 15; c++) {
           var cell = tbl_board.rows[r].cells[c];
-          var svg_innerhtml = '';
+          var cell_innerhtml = '<svg style="display: block; width: 100%; height: 100%;">';
 
-          cell.innerHTML = '<svg style="display: block; width: 100%; height: 100%;"></svg>';
+          // Skip unchanged cells
+          if (cell.board_data == board[r][c]) continue;
+          cell.board_data = board[r][c];
 
-          // Lines
-          if (r > 0)  svg_innerhtml += svg_lines[0];
-          if (c > 0)  svg_innerhtml += svg_lines[1];
-          if (r < 14) svg_innerhtml += svg_lines[2];
-          if (c < 14) svg_innerhtml += svg_lines[3];
+          // Grid (lines)
+          if (r > 0)  cell_innerhtml += svg_lines[0];
+          if (c > 0)  cell_innerhtml += svg_lines[1];
+          if (r < 14) cell_innerhtml += svg_lines[2];
+          if (c < 14) cell_innerhtml += svg_lines[3];
 
           // Pieces
-          if (board[r][c] != -1) svg_innerhtml +=svg_circles[board[r][c]];
+          if (board[r][c] != -1) cell_innerhtml +=svg_circles[board[r][c]];
 
-          // Assign to svg node
-          cell.firstChild.innerHTML = svg_innerhtml;
+          // Update node
+          cell.innerHTML = cell_innerhtml + '</svg>';
 
           if (mode_debug) {
             cell.style.backgroundColor = colors[board[r][c] + 1];
