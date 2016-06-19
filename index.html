@@ -84,7 +84,7 @@
       if (mode_debug) return;
 
       var renju = isRenju();
-      if (renju != -1) callback(renju);
+      if (renju != -1) { callback(renju); return; }
 
       setTimeout(function() {
         var move = searchMoveDeep(ai_player_id, search_depth);
@@ -117,7 +117,7 @@
     // Search in depth
     function searchMoveDeep(player, depth) {
       if (depth <= 0) return [0, [0, 0]];
-      var max_score = -Number.MAX_VALUE, max_score_r, max_score_c;
+      var max_score = 0 - Number.MAX_VALUE, max_score_r, max_score_c;
 
       moves = searchMove(player, search_width);
       for (var i = 0; i < moves.length; i++) {
@@ -128,7 +128,7 @@
         board[move[1][0]][move[1][1]] = -1;
 
         if (move[0] - r[0] > max_score) {
-          max_score = move[0] + r[0];
+          max_score = move[0] - r[0];
           max_score_r = move[1][0];
           max_score_c = move[1][1];
         }
