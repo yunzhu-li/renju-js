@@ -19,22 +19,24 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <meta name="author" content="Yunzhu Li">
     <title>Renju</title>
   </head>
 
-  <body style="font-family: Consolas, monospace; font-size: 14px; background-color: #fff; ">
-    <table id="tbl_board"></table>
-    <br>
-    <span id="txt_msg"></span>
+  <body style="font-family: Consolas, monospace; font-size: 14px; background-color: #fff; margin: 10px;">
+    <div id="div_gamearea" style="width: 600px; height: 600px; margin: 0 auto; ">
+      <table id="tbl_board" style="border-collapse: collapse; border-spacing: 0; background-color: #ddd;">
+      </table>
+      <br>
+      <span id="txt_msg"></span>
+    </div>
   </body>
 
   <script>
-    // Board
+    // Script: Game logic
+    var mode_debug = false;
     var board;
-    var tbl_board = document.getElementById('tbl_board');
-
-    // Game
     var human_player_id, ai_player_id;
 
     // Initializes game and render board
@@ -74,6 +76,7 @@
       renderBoard();
 
       // human_player_id = 1 - human_player_id;
+      if (mode_debug) return -1;
 
       var renju = isRenju();
       if (renju != -1) return renju;
@@ -94,7 +97,7 @@
           for (var dr = -1; dr <= 1; dr++) {
             for (var dc = -1; dc <= 1; dc++) {
               if (dr == 0 && dc <= 0) continue;
-              var result = contiguousCount(r, c, dr, dc, board[r][c], 0);
+              var result = evalDirection(r, c, dr, dc, board[r][c], 1);
               if (result[0] >= 5) return board[r][c];
             }
           }
@@ -110,8 +113,7 @@
       // Loop through all cells
       for (var r = 0; r < 15; r++) {
         for (var c = 0; c < 15; c++) {
-          // tbl_board.rows[r].cells[c].innerHTML = '';
-
+          // Consider only empty cells
           if (board[r][c] != -1) continue;
 
           // Place a piece
@@ -126,9 +128,6 @@
           // Calculate score for the position
           var score = scores[player] + Math.floor(0.5 * scores[1 - player]);
 
-          // tbl_board.rows[r].cells[c].innerHTML = score;
-          // tbl_board.rows[r].cells[c].style.fontSize = '8px';
-
           if (max_score == -1 || score > max_score) {
             max_score = score;
             max_score_r = r;
@@ -142,57 +141,61 @@
     // Evaluates a group of pieces for a origin position
     function evalGroup(r, c) {
       var scores = [0, 0]
-      var omni_dir_count0 = [], omni_dir_count1 = [];
 
-      // Loop through all directions
-      for (var dr = 0; dr <= 1; dr++) {
-        for (var dc = -1; dc <= 1; dc++) {
-          if (dr == 0 && dc <= 0) continue;
+      // Consider both contiguous and non-contiguous possibilities
+      for (var contiguous = 0; contiguous <= 1; contiguous++) {
+        // Record row analysis of all directions
+        var omni_dir_eval0 = [], omni_dir_eval1 = [];
 
-          // Count contiguous pieces for each direction of each player
-          var r0 = contiguousCount(r, c, dr, dc, 0, 1);
-          var r1 = contiguousCount(r, c, dr, dc, 1, 1);
-          omni_dir_count0.push(r0);
-          omni_dir_count1.push(r1);
+        // Loop through all directions
+        for (var dr = 0; dr <= 1; dr++) {
+          for (var dc = -1; dc <= 1; dc++) {
+            if (dr == 0 && dc <= 0) continue;
+
+            // Count contiguous pieces for each direction of each player
+            var r0 = evalDirection(r, c, dr, dc, 0, contiguous);
+            var r1 = evalDirection(r, c, dr, dc, 1, contiguous);
+            omni_dir_eval0.push(r0);
+            omni_dir_eval1.push(r1);
+          }
         }
+
+        // Calculate score
+        scores[0] = Math.max(scores[0], scoreOmniDirEval(omni_dir_eval0));
+        scores[1] = Math.max(scores[1], scoreOmniDirEval(omni_dir_eval1));
       }
-
-      // Calculate score
-      scores[0] = scoreOmniDirCnt(omni_dir_count0);
-      scores[1] = scoreOmniDirCnt(omni_dir_count1);
-
       return scores;
     }
 
-    // Calculates score for an omni-directional contiguous count
-    function scoreOmniDirCnt(omni_dir_count) {
+    // Calculates score for an omni-directional evaluation
+    function scoreOmniDirEval(omni_dir_eval) {
       var score = 0;
-      score += matchPattern(omni_dir_count, [1, 5, 0], []) * 100000;
-      score += matchPattern(omni_dir_count, [2, 4, 1], []) * 3000;
-      score += matchPattern(omni_dir_count, [1, 4, 0], []) * 2500;
-      score += matchPattern(omni_dir_count, [1, 4, 1], [1, 3, 0]) * 1000;
-      score += matchPattern(omni_dir_count, [2, 3, 0], []) * 500;
-      score += matchPattern(omni_dir_count, [1, 3, 0], []) * 100;
-      score += matchPattern(omni_dir_count, [1, 4, 1], []) * 30;
-      score += matchPattern(omni_dir_count, [2, 2, 0], []) * 8;
-      score += matchPattern(omni_dir_count, [1, 3, 1], []) * 4;
-      score += matchPattern(omni_dir_count, [1, 2, 0], []) * 3;
-      score += matchPattern(omni_dir_count, [1, 2, 1], []) * 2;
-      score += matchPattern(omni_dir_count, [1, 1, 0], []) * 1;
-      score += matchPattern(omni_dir_count, [1, 1, 1], []) * 1;
+      score += matchPattern(omni_dir_eval, [1, 5, 0], []) * 100000;
+      score += matchPattern(omni_dir_eval, [2, 4, 1], []) * 3000;
+      score += matchPattern(omni_dir_eval, [1, 4, 0], []) * 2500;
+      score += matchPattern(omni_dir_eval, [1, 4, 1], [1, 3, 0]) * 1000;
+      score += matchPattern(omni_dir_eval, [2, 3, 0], []) * 200;
+      score += matchPattern(omni_dir_eval, [1, 3, 0], []) * 60;
+      score += matchPattern(omni_dir_eval, [1, 4, 1], []) * 30;
+      score += matchPattern(omni_dir_eval, [2, 2, 0], []) * 8;
+      score += matchPattern(omni_dir_eval, [1, 3, 1], []) * 5;
+      score += matchPattern(omni_dir_eval, [1, 2, 0], []) * 4;
+      score += matchPattern(omni_dir_eval, [1, 2, 1], []) * 3;
+      score += matchPattern(omni_dir_eval, [1, 1, 0], []) * 2;
+      score += matchPattern(omni_dir_eval, [1, 1, 1], []) * 1;
       return score;
     }
 
-    // Matches a pattern to an omni-directional contiguous count
-    function matchPattern(omni_dir_count, pattern0, pattern1) {
+    // Matches a pattern to an omni-directional evaluation
+    function matchPattern(omni_dir_eval, pattern0, pattern1) {
       var cnt0 = pattern0[0], len0 = pattern0[1], cut0 = pattern0[2];
       var cnt1 = -1, len1 = -1, cut1 = -1;
       var p0_match_cnt = 0, p1_match_cnt = 0;
       if (pattern1.length > 0) { cnt1 = pattern1[0]; len1 = pattern1[1]; cut1 = pattern1[2]; }
 
-      var arr_len = omni_dir_count.length
+      var arr_len = omni_dir_eval.length
       for (var i = 0; i < arr_len; i++) {
-        dir_eval = omni_dir_count[i];
+        dir_eval = omni_dir_eval[i];
         if (dir_eval[0] == len0 && dir_eval[1] == cut0) p0_match_cnt++;
         if (dir_eval[0] == len1 && dir_eval[1] == cut1) p1_match_cnt++;
       }
@@ -204,13 +207,17 @@
       }
     }
 
-    // Counts the number of contiguous pieces by given position and direction
+    // Counts the number of contiguous / non-contiguous pieces by given position and direction
     // Returns [len, cut]
     //         len - number of pieces in a row
     //         cut - is the row cut by another player or reaches edge
-    function contiguousCount(r, c, dr, dc, player, space_allowance) {
+    function evalDirection(r, c, dr, dc, player, contiguous) {
       var rl = r, rr = r, cl = c, cr = c;
       var len = 1, cutl = 1, cutr = 1;
+
+      // Allow an additional empty space if contiguousness is not required
+      var space_allowance = 0;
+      if (contiguous == 0) space_allowance = 1;
 
       while (true) {
         // Move
@@ -219,11 +226,8 @@
         // Stop conditions
         if (rl < 0 || rl >= 15 || cl < 0 || cl >= 15) break;
         if (board[rl][cl] == -1) {
-          // Handle 1001 -> 1101 cases
-          if (space_allowance == 1 &&
-              getCell(r + dr, c + dc) == player &&
-              getCell(rl - dr, cl - dc) == player) {
-            space_allowance = 0;
+          if (space_allowance == 1 && getCell(rl - dr, cl - dc) == player) {
+            space_allowance--;
             continue;
           } else {
             cutl = 0;
@@ -241,11 +245,8 @@
         // Stop conditions
         if (rr < 0 || rr >= 15 || cr < 0 || cr >= 15) break;
         if (board[rr][cr] == -1) {
-          // Handle 1001 -> 1101 cases
-          if (space_allowance == 1 &&
-              getCell(r - dr, c - dc) == player &&
-              getCell(rr + dr, cr + dc) == player) {
-            space_allowance = 0;
+          if (space_allowance == 1 && getCell(rr + dr, cr + dc) == player) {
+            space_allowance--;
             continue;
           } else {
             cutr = 0;
@@ -256,7 +257,11 @@
         len++;
       }
 
-      if (len >= 5) return [5, 0];
+      if (len >= 5) {
+        if (contiguous > 0 || space_allowance > 0) return [5, 0];
+        else return[4, 1];
+      }
+      if (len == 4 && space_allowance == 0) return [4, 1];
       if (cutl == 1 && cutr == 1) return [0, 1];
       return [len, cutl + cutr];
     }
@@ -268,26 +273,68 @@
     }
 
   </script>
+
   <script>
+    // Script: Game display control, input and message
+    // Graphics
+    var svg_lines = [
+      '<line x1="50%" y1="0" x2="50%" y2="50%" style="stroke:rgb(110,110,110); stroke-width:2px;" />',
+      '<line x1="0" y1="50%" x2="50%" y2="50%" style="stroke:rgb(110,110,110); stroke-width:2px;" />',
+      '<line x1="50%" y1="50%" x2="50%" y2="100%" style="stroke:rgb(110,110,110); stroke-width:2px;" />',
+      '<line x1="50%" y1="50%" x2="100%" y2="50%" style="stroke:rgb(110,110,110); stroke-width:2px;" />'];
+
+    var svg_circles = [
+      '<circle cx="50%" cy="50%" r="32%" fill="black" />',
+      '<circle cx="50%" cy="50%" r="32%" fill="white" />'];
+
+    var colors = ['#bbb', '#777', '#eee'];
+
+    // Bind elements
+    var tbl_board = document.getElementById('tbl_board');
+    var div_gamearea = document.getElementById('div_gamearea');
 
     // Randomly select first player
     var human_player = 0;
     if (Math.random() > 0.5) human_player = 1;
 
-    var game_active = true;
+    if (human_player == 0) showMessage('Player: black');
+    else showMessage('Player: white');
 
-    // Initialization
-    initTblBoard();
+    initGameDisplay();
     initGame(human_player);
 
-    // Initializes tbl_board
-    function initTblBoard() {
+    // Game status
+    var game_active = true;
+
+    // Initializes game display
+    function initGameDisplay() {
+
+      // Automatically adjust display size
+      var window_width = Math.min(600, window.innerWidth);
+      var window_height = Math.min(600, window.innerHeight);
+      var window_size = Math.min(window_width, window_height);
+
+      // Game area size
+      div_gamearea.style.width = window_width - 20 + 'px';
+      div_gamearea.style.height = window_height - 20 + 'px';
+
+      // Control table size with cell size
+      var cell_width = Math.floor((window_size - 20) / 15);
+      var cell_height = Math.floor((window_size - 20) / 15);
+
+      // No more blurry
+      cell_width -= cell_width % 2;
+      cell_height -= cell_height % 2;
+
+      // Initializes tbl_board
       for (var r = 0; r < 15; r++) {
         var row = tbl_board.insertRow();
         for (var c = 0; c < 15; c++) {
           cell = row.insertCell();
           cell.r = r; cell.c = c;
-          cell.width = '20px'; cell.height = '20px';
+          cell.width = cell_width; cell.height = cell_height;
+          cell.style.padding = '0';
+          cell.style.verticalAlign = 'bottom';
           cell.addEventListener("click", tblBoardOnClick);
         }
       }
@@ -297,13 +344,27 @@
     function renderBoard() {
       for (var r = 0; r < 15; r++) {
         for (var c = 0; c < 15; c++) {
-          var color = '#ccc';
-          if (board[r][c] == 0) {
-            color = '#666';
-          } else if (board[r][c] == 1) {
-            color = '#eee';
+          var cell = tbl_board.rows[r].cells[c];
+          var svg_innerhtml = '';
+
+          cell.innerHTML = '<svg style="display: block; width: 100%; height: 100%;"></svg>';
+
+          // Lines
+          if (r > 0)  svg_innerhtml += svg_lines[0];
+          if (c > 0)  svg_innerhtml += svg_lines[1];
+          if (r < 14) svg_innerhtml += svg_lines[2];
+          if (c < 14) svg_innerhtml += svg_lines[3];
+
+          // Pieces
+          if (board[r][c] != -1) svg_innerhtml +=svg_circles[board[r][c]];
+
+          // Assign to svg node
+          cell.firstChild.innerHTML = svg_innerhtml;
+
+          if (mode_debug) {
+            cell.style.backgroundColor = colors[board[r][c] + 1];
+            cell.innerHTML = '<span style="font-size : 8px">[' + evalGroup(r, c) +']</span>';
           }
-          tbl_board.rows[r].cells[c].style.backgroundColor = color;
         }
       }
     }
@@ -313,17 +374,21 @@
       if (!game_active) return;
 
       // Place piece
-      var r = e.target.r, c = e.target.c;
+      var r = e.currentTarget.r, c = e.currentTarget.c;
       var renju = placePiece(r, c);
 
       // Check if any player wins
       if (renju != -1) {
         game_active = false;
-
-        var player_name = 'Black';
-        if (renju == 1) player_name = 'White';
-        document.getElementById('txt_msg').innerHTML = player_name + ' wins! <a href=".">Restart</a>';
+        var player_color = 'Black';
+        if (renju == 1) player_color = 'White';
+        showMessage(player_color + ' wins! <a href=".">Restart</a>');
       }
+    }
+
+    // Shows message on page
+    function showMessage(msg) {
+      document.getElementById('txt_msg').innerHTML = msg;
     }
   </script>
 </html>
