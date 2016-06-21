@@ -38,7 +38,7 @@
 
     // Configurations
     var mode_debug = false;
-    var search_depth = 2, search_width = -1;
+    var search_depth = 4, search_width = -1;
 
     // Game data
     var board;
@@ -121,7 +121,7 @@
 
     // Search in depth
     function searchMoveDeep(player, depth) {
-      if (depth < 0) return [0, [0, 0]];
+      if (depth <= 0) return [0, [0, 0]];
       var max_score = 0 - Number.MAX_VALUE, max_score_r, max_score_c;
 
       // Search moves for current player
@@ -148,6 +148,8 @@
           max_score_r = move[1][0];
           max_score_c = move[1][1];
         }
+
+        if (r[0] < 200 && i > 10) break;
       }
 
       return [max_score, [max_score_r, max_score_c]];
@@ -468,6 +470,7 @@
     function tblBoardOnClick(e) {
       if (!game_active) return;
       game_active = false;
+      showMessage('Working', '#fff', '#777');
 
       // Place piece
       var r = e.currentTarget.r, c = e.currentTarget.c;
@@ -484,12 +487,16 @@
         showMessage(player_color + ' wins! <a href=".">Restart</a>');
       } else {
         game_active = true;
+
+        if (human_player == 0) showMessage('Player: black');
+        else showMessage('Player: white');
       }
     }
 
     // Shows message on page
-    function showMessage(msg) {
-      document.getElementById('txt_msg').innerHTML = msg;
+    function showMessage(msg, txtColor = '#333', bgColor = '#fff') {
+      var msg_html = '<span style="color:' + txtColor + ';background-color:' + bgColor + ';">' + msg + '</span>';
+      document.getElementById('txt_msg').innerHTML = msg_html;
     }
   </script>
 </html>
