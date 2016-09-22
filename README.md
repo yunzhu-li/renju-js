@@ -1,9 +1,8 @@
-# renju
+# renju-js
 
-A simple Renju game written in JavaScript.
+This project has been replaced by [https://github.com/yunzhu-li/renju-parallel](https://github.com/yunzhu-li/renju-parallel)  and is no longer maintained.
 
-The current default search depth is `2`. But I can rarely beat it even it is set to `1`.
+The new project is written in C++, all new improvements will be made to the new project.
 
-I'm still improving the algorithm, including pattern analysis and increasing depth.
+`renju-js` is a simple Renju game written in JavaScript, runs a customized `heuristic Negamax` algorithm.
 
-The game is only 1 html page, hosted on: [https://yunzhu.li/renju](https://yunzhu.li/renju)
